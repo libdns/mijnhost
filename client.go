@@ -11,20 +11,20 @@ import (
 	"github.com/libdns/libdns"
 )
 
-func (p *Provider) createRecord(ctx context.Context, zone string, record libdns.Record) (SavedRecord, error) {
-	body, err := json.Marshal(libdnsToRecord(record))
-	reqURL := fmt.Sprintf("%s/domains/%s/dns-records", p.ApiURL, zone)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(body))
+// func (p *Provider) createRecord(ctx context.Context, zone string, record libdns.Record) (SavedRecord, error) {
+// 	body, err := json.Marshal(libdnsToRecord(record))
+// 	reqURL := fmt.Sprintf("%s/domains/%s/dns", p.ApiURL, zone)
+// 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(body))
 
-	var result SavedRecord
-	err = p.doAPIRequest(req, &result)
+// 	var result SavedRecord
+// 	err = p.doAPIRequest(req, &result)
 
-	return result, err
-}
+// 	return result, err
+// }
 
 func (p *Provider) updateRecord(ctx context.Context, zone string, record libdns.Record) (SavedRecord, error) {
 	body, err := json.Marshal(libdnsToRecord(record))
-	reqURL := fmt.Sprintf("%s/domains/%s/dns-records/%s", p.ApiURL, zone, record.ID)
+	reqURL := fmt.Sprintf("%s/domains/%s/dns", p.ApiURL, zone)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, reqURL, bytes.NewReader(body))
 
 	var result SavedRecord

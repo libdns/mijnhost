@@ -6,6 +6,7 @@ package mijnhost
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/libdns/libdns"
 )
@@ -21,31 +22,99 @@ type Provider struct {
 	// TODO: put config fields here (with snake_case json
 	// struct tags on exported fields), for example:
 	APIToken string `json:"api_token,omitempty"`
-	ApiURL   string `default:"https://mijn.host/api/v2"`
+	ApiURL   string `json:"api_url,omitempty"`
 }
 
-// GetRecords lists all the records in the zone.
+func (p *Provider) setDefaults() {
+	if p.ApiURL == "" {
+		p.ApiURL = "https://mijn.host/api/v2"
+	}
+}
+
 func (p *Provider) GetRecords(ctx context.Context, zone string) ([]libdns.Record, error) {
-	return nil, fmt.Errorf("TODO: not implemented")
+	p.setDefaults()
+
+	zone = normalizeZone(zone)
+	reqURL := fmt.Sprintf("%s/domains/%s/dns", p.ApiURL, zone)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result RecordsResponse
+	err = p.doAPIRequest(req, &result)
+
+	recs := make([]libdns.Record, 0, len(result.DNSRecords))
+	for _, r := range result.DNSRecords {
+		recs = append(recs, r.libDNSRecord(zone))
+	}
+
+	return recs, err
 }
 
-// AppendRecords adds records to the zone. It returns the records that were added.
 func (p *Provider) AppendRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	return nil, fmt.Errorf("TODO: not implemented")
+	p.setDefaults()
+
+	zone = normalizeZone(zone)
+	var created []libdns.Record
+	for _, record := range records {
+		result, err := p.createRecord(ctx, zone, record)
+		if err != nil {
+			return nil, err
+		}
+		created = append(created, result.libDNSRecord(zone))
+	}
+
+	return created, nil
 }
 
-// SetRecords sets the records in the zone, either by updating existing records or creating new ones.
-// It returns the updated records.
-func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	return nil, fmt.Errorf("TODO: not implemented")
-}
-
-// DeleteRecords deletes the records from the zone. It returns the records that were deleted.
 func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	return nil, fmt.Errorf("TODO: not implemented")
+	p.setDefaults()
+
+	zone = normalizeZone(zone)
+	var deleted []libdns.Record
+	for _, record := range records {
+		err := p.deleteRecord(ctx, zone, record)
+		if err != nil {
+			return nil, err
+		}
+		deleted = append(deleted, record)
+	}
+
+	return deleted, nil
 }
 
-// Interface guards
+func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
+	p.setDefaults()
+
+	zone = normalizeZone(zone)
+	zoneRecords, err := p.GetRecords(ctx, zone)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []libdns.Record
+	var resultErr error
+	for _, libRecord := range records {
+		exists := isRecordExists(zoneRecords, libRecord)
+		if exists {
+			record, err := p.updateRecord(ctx, zone, libRecord)
+			if err != nil {
+				resultErr = err
+			}
+			results = append(results, record.libDNSRecord(zone))
+		} else {
+			record, err := p.createRecord(ctx, zone, libRecord)
+			if err != nil {
+				resultErr = err
+			}
+			results = append(results, record.libDNSRecord(zone))
+		}
+	}
+
+	return results, resultErr
+}
+
 var (
 	_ libdns.RecordGetter   = (*Provider)(nil)
 	_ libdns.RecordAppender = (*Provider)(nil)

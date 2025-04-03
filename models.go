@@ -2,30 +2,27 @@ package mijnhost
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/libdns/libdns"
 )
 
 type RecordResponse struct {
-	Data struct {
-		Priority uint   `json:"priority,omitempty"`
-		Value    string `json:"value"`
-	} `json:"data"`
-	ID   uint   `json:"id"`
-	Type string `json:"type"`
-	Fqdn string `json:"fqdn"`
+	Type  string        `json:"type"`
+	Name  string        `json:"name"`
+	Value string        `json:"value"`
+	TTL   time.Duration `json:"ttl"`
 }
 
 type RecordsResponse struct {
-	Meta struct {
-		Total int `json:"total"`
-	} `json:"meta"`
-	DNSRecords []RecordResponse `json:"dns_records"`
+	DNSRecords []RecordResponse `json:"data.records"`
 }
 
 type Record struct {
-	Subdomain string `json:"subdomain"`
-	Type      string `json:"type"`
-	Value     string `json:"value"`
+	Name  string `json:"name"`
+	Type  string `json:"type"`
+	Value string `json:"value"`
+	TTL   int    `json:"ttl"`
 }
 
 type SavedRecord struct {
@@ -51,18 +48,21 @@ func (r *SavedRecord) libDNSRecord(zone string) libdns.Record {
 
 func (r *RecordResponse) libDNSRecord(zone string) libdns.Record {
 	return libdns.Record{
-		ID:       fmt.Sprintf("%d", r.ID),
-		Name:     libdns.RelativeName(r.Fqdn, zone),
-		Type:     r.Type,
-		Value:    r.Data.Value,
-		Priority: r.Data.Priority,
+		// ID:       fmt.Sprintf("%d", r.ID),
+		Name:  libdns.RelativeName(r.Name, zone),
+		Type:  r.Type,
+		Value: r.Value,
+		TTL:   r.TTL,
+		// Priority: r.Priority,
 	}
 }
 
 func libdnsToRecord(r libdns.Record) Record {
 	return Record{
-		Type:      r.Type,
-		Value:     r.Value,
-		Subdomain: r.Name,
+		Type: r.Type,
+
+		Value: r.Value,
+		Name:  r.Name,
+		TTL:   int(r.TTL),
 	}
 }
