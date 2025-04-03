@@ -1,7 +1,7 @@
 // Package libdnstemplate implements a DNS record management client compatible
 // with the libdns interfaces for <PROVIDER NAME>. TODO: This package is a
 // template only. Customize all godocs for actual implementation.
-package libdnstemplate
+package mijnhost
 
 import (
 	"context"
@@ -21,6 +21,7 @@ type Provider struct {
 	// TODO: put config fields here (with snake_case json
 	// struct tags on exported fields), for example:
 	APIToken string `json:"api_token,omitempty"`
+	ApiURL   string `default:"https://mijn.host/api/v2"`
 }
 
 // GetRecords lists all the records in the zone.
