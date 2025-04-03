@@ -56,53 +56,73 @@ func (p *Provider) AppendRecords(ctx context.Context, zone string, records []lib
 	p.setDefaults()
 
 	zone = normalizeZone(zone)
-	var created []libdns.Record
+
+	var results []libdns.Record
 	for _, record := range records {
-		result, err := p.updateRecord(ctx, zone, record)
+		_, err := p.updateRecord(ctx, zone, record)
 		if err != nil {
 			return nil, err
 		}
-		created = append(created, result.libDNSRecord(zone))
+
+		results = append(results, record)
 	}
 
-	return created, nil
+	return results, nil
 }
 
 func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
 	p.setDefaults()
 
 	zone = normalizeZone(zone)
-	var deleted []libdns.Record
-	for _, record := range records {
-		err := p.deleteRecord(ctx, zone, record)
-		if err != nil {
-			return nil, err
-		}
-		deleted = append(deleted, record)
+
+	// The api does not support deleting records, so we need to retrieve all of them, and update the whole set
+	// excluding the removed ones
+
+	allRecords, err := p.GetRecords(ctx, zone)
+	if err != nil {
+		return nil, err
 	}
 
-	return deleted, nil
+	var filteredRecords []libdns.Record
+
+	for _, record := range allRecords {
+		shouldRemove := false
+		for _, r := range records {
+			if record.Type == r.Type && record.Name == r.Name && record.Value == r.Value {
+				shouldRemove = true
+				break
+			}
+		}
+		if !shouldRemove {
+			filteredRecords = append(filteredRecords, record)
+		}
+	}
+
+	// Now call the update endpoint to set all records.
+	err = p.replaceRecords(ctx, zone, filteredRecords)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return records, err
 }
 
 func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
 	p.setDefaults()
 
 	zone = normalizeZone(zone)
-	zoneRecords, err := p.GetRecords(ctx, zone)
-	if err != nil {
-		return nil, err
-	}
 
 	var results []libdns.Record
 	var resultErr error
 	for _, libRecord := range records {
-	
-		record, err := p.updateRecord(ctx, zone, libRecord)
+
+		_, err := p.updateRecord(ctx, zone, libRecord)
 		if err != nil {
 			resultErr = err
 		}
-		results = append(results, record.libDNSRecord(zone))
-		
+		results = append(results, libRecord)
+
 	}
 
 	return results, resultErr

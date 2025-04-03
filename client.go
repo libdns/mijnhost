@@ -22,20 +22,21 @@ import (
 // 	return result, err
 // }
 
-func (p *Provider) updateRecord(ctx context.Context, zone string, record libdns.Record) (SavedRecord, error) {
+func (p *Provider) updateRecord(ctx context.Context, zone string, record libdns.Record) (SavedRecordResponse, error) {
 	body, err := json.Marshal(libdnsToRecord(record))
 	reqURL := fmt.Sprintf("%s/domains/%s/dns", p.ApiURL, zone)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, reqURL, bytes.NewReader(body))
 
-	var result SavedRecord
+	var result SavedRecordResponse
 	err = p.doAPIRequest(req, &result)
 
 	return result, err
 }
 
-func (p *Provider) deleteRecord(ctx context.Context, zone string, record libdns.Record) error {
-	reqURL := fmt.Sprintf("%s/domains/%s/dns-records/%s", p.ApiURL, zone, record.ID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, nil)
+func (p *Provider) replaceRecords(ctx context.Context, zone string, records []libdns.Record) error {
+	body, err := json.Marshal(libdnsToRecordList(records))
+	reqURL := fmt.Sprintf("%s/domains/%s/dns", p.ApiURL, zone)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL, bytes.NewReader(body))
 
 	err = p.doAPIRequest(req, nil)
 

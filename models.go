@@ -1,7 +1,6 @@
 package mijnhost
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/libdns/libdns"
@@ -25,24 +24,22 @@ type Record struct {
 	TTL   int    `json:"ttl"`
 }
 
-type SavedRecord struct {
-	DNSRecord struct {
-		ID   uint   `json:"id"`
-		Type string `json:"type"`
-		Data struct {
-			Priority  uint   `json:"priority,omitempty"`
-			Value     string `json:"value"`
-			Subdomain string `json:"subdomain"`
-		}
-	} `json:"dns_record"`
+type RecordList struct {
+	Records []Record `json:"records"`
 }
 
-func (r *SavedRecord) libDNSRecord(zone string) libdns.Record {
+type SavedRecordResponse struct {
+	Status            uint   `json:"status"`
+	StatusDescription string `json:"status_description"`
+}
+
+func (r *Record) libDNSRecord(zone string) libdns.Record {
 	return libdns.Record{
-		ID:    fmt.Sprintf("%d", r.DNSRecord.ID),
-		Name:  libdns.RelativeName(r.DNSRecord.Data.Subdomain, zone),
-		Type:  r.DNSRecord.Type,
-		Value: r.DNSRecord.Data.Value,
+		//ID:    fmt.Sprintf("%d", r.DNSRecord.ID),
+		Name:  libdns.RelativeName(r.Name, zone),
+		Type:  r.Type,
+		Value: r.Value,
+		TTL:   time.Duration(r.TTL),
 	}
 }
 
@@ -64,5 +61,19 @@ func libdnsToRecord(r libdns.Record) Record {
 		Value: r.Value,
 		Name:  r.Name,
 		TTL:   int(r.TTL),
+	}
+}
+
+func libdnsToRecords(r []libdns.Record) []Record {
+	result := make([]Record, len(r)) // Create a new slice with the same length
+	for _, v := range r {
+		result = append(result, libdnsToRecord(v)) // Apply function
+	}
+	return result
+}
+
+func libdnsToRecordList(r []libdns.Record) RecordList {
+	return RecordList{
+		Records: libdnsToRecords(r),
 	}
 }
