@@ -13,20 +13,12 @@ import (
 // Provider facilitates DNS record manipulation with mijn.host.
 type Provider struct {
 	ApiKey string `json:"api_token,omitempty"`
-	ApiURL string `json:"api_url,omitempty"`
-}
-
-func (p *Provider) setDefaults() {
-	if p.ApiURL == "" {
-		p.ApiURL = "https://mijn.host/api/v2"
-	}
 }
 
 func (p *Provider) GetRecords(ctx context.Context, zone string) ([]libdns.Record, error) {
-	p.setDefaults()
-
 	zone = normalizeZone(zone)
-	reqURL := fmt.Sprintf("%s/domains/%s/dns", p.ApiURL, zone)
+
+	reqURL := fmt.Sprintf("%s/domains/%s/dns", ApiUrl, zone)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
@@ -44,8 +36,6 @@ func (p *Provider) GetRecords(ctx context.Context, zone string) ([]libdns.Record
 }
 
 func (p *Provider) AppendRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	p.setDefaults()
-
 	zone = normalizeZone(zone)
 
 	var results []libdns.Record
@@ -62,8 +52,6 @@ func (p *Provider) AppendRecords(ctx context.Context, zone string, records []lib
 }
 
 func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	p.setDefaults()
-
 	zone = normalizeZone(zone)
 
 	// The api does not support deleting records, so we retrieve all of them, and update the whole set
@@ -100,8 +88,6 @@ func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []lib
 }
 
 func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	p.setDefaults()
-
 	zone = normalizeZone(zone)
 
 	var results []libdns.Record
