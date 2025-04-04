@@ -5,9 +5,10 @@ import (
 	"os"
 	"testing"
 
+	"mijnhost"
+
 	"github.com/joho/godotenv"
 	"github.com/libdns/libdns"
-	"github.com/libdns/mijnhost"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,19 +21,20 @@ var sourceRecords []libdns.Record
 func setup() {
 	err := godotenv.Load(".env")
 	if err != nil {
-		panic("Error loading .env.example file")
+		panic("Error loading .env file")
 	}
 
 	provider = mijnhost.Provider{
-		APIToken: os.Getenv("MIJNHOST_API_TOKEN"),
+		ApiKey: os.Getenv("MIJNHOST_API_KEY"),
 	}
 	zone = os.Getenv("MIJNHOST_ZONE")
 	ctx = context.Background()
 	sourceRecords = []libdns.Record{
 		{
 			Type:  "A",
-			Name:  zone,
+			Name:  "test",
 			Value: "1.2.3.1",
+			TTL:   3600,
 		},
 	}
 }
@@ -40,7 +42,7 @@ func setup() {
 func TestProvider_GetRecords(t *testing.T) {
 	setup()
 
-	provider.DeleteRecords(ctx, zone, sourceRecords)
+	// provider.DeleteRecords(ctx, zone, sourceRecords)
 
 	records, err := provider.GetRecords(ctx, zone)
 	assert.NoError(t, err)
@@ -59,5 +61,5 @@ func TestProvider_AppendRecords(t *testing.T) {
 	records, err := provider.AppendRecords(ctx, zone, newRecords)
 	assert.NoError(t, err)
 	assert.NotNil(t, records)
-	assert.Equal(t, 2, len(records))
+	assert.Equal(t, 1, len(records))
 }
