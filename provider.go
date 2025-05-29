@@ -65,9 +65,11 @@ func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []lib
 	var filteredRecords []libdns.Record
 
 	for _, record := range allRecords {
+		existingRecordRR := record.RR()
 		shouldRemove := false
 		for _, r := range records {
-			if record.Type == r.Type && record.Name == r.Name && record.Value == r.Value {
+			recordToCheckRR := r.RR()
+			if existingRecordRR.Type == recordToCheckRR.Type && existingRecordRR.Name == recordToCheckRR.Name && existingRecordRR.Data == recordToCheckRR.Data {
 				shouldRemove = true
 				break
 			}
