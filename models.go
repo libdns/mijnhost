@@ -41,21 +41,21 @@ type SavedRecordResponse struct {
 }
 
 func (r *Record) libDNSRecord(zone string) libdns.Record {
-	return libdns.Record{
+	return libdns.RR{
 		//ID:    fmt.Sprintf("%d", r.DNSRecord.ID),
 		Name:  libdns.RelativeName(r.Name, zone),
 		Type:  r.Type,
-		Value: r.Value,
+		Data: r.Value,
 		TTL:   time.Duration(r.TTL),
 	}
 }
 
 func (r *RecordResponse) libDNSRecord(zone string) libdns.Record {
-	return libdns.Record{
+	return libdns.RR{
 		// ID:       fmt.Sprintf("%d", r.ID),
 		Name:  libdns.RelativeName(r.Name, zone),
 		Type:  r.Type,
-		Value: r.Value,
+		Data: r.Value,
 		TTL:   r.TTL,
 		// Priority: r.Priority,
 	}
@@ -67,11 +67,12 @@ func libdnsToRecordRequest(r libdns.Record) RecordRequest {
 }
 
 func libdnsToRecord(r libdns.Record) Record {
+	rr := r.RR()
 	return Record{
-		Type:  r.Type,
-		Value: r.Value,
-		Name:  r.Name,
-		TTL:   int(r.TTL),
+		Type:  rr.Type,
+		Value: rr.Data,
+		Name:  rr.Name,
+		TTL:   int(rr.TTL),
 	}
 }
 
