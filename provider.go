@@ -1,115 +1,83 @@
-// Package libdnstemplate implements a DNS record management client compatible
-// with the libdns interfaces for mijn.host.
 package mijnhost
 
 import (
-	"context"
-	"fmt"
-	"net/http"
+	"io"
+	"net/url"
+	"os"
+	"sync"
 
 	"github.com/libdns/libdns"
+	"github.com/libdns/mijnhost/client"
 )
 
-// Provider facilitates DNS record manipulation with mijn.host.
 type Provider struct {
-	ApiKey string `json:"api_token,omitempty"`
+	// ApiKey used for authenticating the mijn.host api see:
+	// https://mijn.host/api/doc/doc-343216#obtaining-your-api-key
+	ApiKey string `json:"api_key"`
+	// Debug when true it will dump the http.Client request/response to os.Stdout
+	// or you can change that by setting `DebugOut`
+	Debug    bool      `json:"debug"`
+	DebugOut io.Writer `json:"-"`
+	// BaseUri used for the api calls and will default to https://mijn.host/api/v2/
+	BaseUri *ApiBaseUri `json:"base_uri"`
+
+	client *client.ApiClient
+	mutex  sync.RWMutex
 }
 
-func (p *Provider) GetRecords(ctx context.Context, zone string) ([]libdns.Record, error) {
-	zone = normalizeZone(zone)
+func (p *Provider) getClient() *client.ApiClient {
+	if nil == p.client {
 
-	reqURL := fmt.Sprintf("%s/domains/%s/dns", ApiUrl, zone)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var result RecordsResponse
-	err = p.doAPIRequest(req, &result)
-
-	recs := make([]libdns.Record, 0, len(result.Data.Records))
-	for _, r := range result.Data.Records {
-		recs = append(recs, r.libDNSRecord(zone))
-	}
-
-	return recs, err
-}
-
-func (p *Provider) AppendRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	zone = normalizeZone(zone)
-
-	var results []libdns.Record
-	for _, record := range records {
-		_, err := p.updateRecord(ctx, zone, record)
-		if err != nil {
-			return nil, err
+		if nil == p.BaseUri {
+			p.BaseUri = DefaultApiBaseUri()
 		}
 
-		results = append(results, record)
+		if nil == p.DebugOut {
+			p.DebugOut = os.Stdout
+		}
+
+		p.client = client.NewApiClient(p)
 	}
 
-	return results, nil
+	return p.client
 }
 
-func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	zone = normalizeZone(zone)
-
-	// The api does not support deleting records, so we retrieve all of them, and update the whole set
-	// without the removed ones
-
-	allRecords, err := p.GetRecords(ctx, zone)
-	if err != nil {
-		return nil, err
-	}
-
-	var filteredRecords []libdns.Record
-
-	for _, record := range allRecords {
-		existingRecordRR := record.RR()
-		shouldRemove := false
-		for _, r := range records {
-			recordToCheckRR := r.RR()
-			if existingRecordRR.Type == recordToCheckRR.Type && existingRecordRR.Name == recordToCheckRR.Name && existingRecordRR.Data == recordToCheckRR.Data {
-				shouldRemove = true
-				break
-			}
-		}
-		if !shouldRemove {
-			filteredRecords = append(filteredRecords, record)
-		}
-	}
-
-	// Now call the update endpoint to set all records.
-	err = p.replaceRecords(ctx, zone, filteredRecords)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return records, err
+func (p *Provider) GetApiKey() string {
+	return p.ApiKey
 }
 
-func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	zone = normalizeZone(zone)
-
-	var results []libdns.Record
-	var resultErr error
-	for _, libRecord := range records {
-
-		_, err := p.updateRecord(ctx, zone, libRecord)
-		if err != nil {
-			resultErr = err
-		}
-		results = append(results, libRecord)
-
+func (p *Provider) GetDebug() io.Writer {
+	if p.Debug && p.DebugOut != nil {
+		return p.DebugOut
 	}
-
-	return results, resultErr
+	return nil
 }
 
+func (p *Provider) GetBaseUri() *url.URL {
+
+	if nil == p.BaseUri {
+		return nil
+	}
+
+	return (*url.URL)(p.BaseUri)
+}
+
+func fqdn(name string) string {
+
+	if name[len(name)-1] != '.' {
+		return name + "."
+	}
+
+	return name
+}
+
+// Interface guards
 var (
+	_ client.ApiClientConfig = (*Provider)(nil)
+
 	_ libdns.RecordGetter   = (*Provider)(nil)
 	_ libdns.RecordAppender = (*Provider)(nil)
 	_ libdns.RecordSetter   = (*Provider)(nil)
 	_ libdns.RecordDeleter  = (*Provider)(nil)
+	_ libdns.ZoneLister     = (*Provider)(nil)
 )
