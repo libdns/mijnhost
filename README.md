@@ -25,7 +25,6 @@ import (
 func main() { 
 	var provider = &mijnhost.Provider{
 		ApiKey: "***************************",
-		Debug:  true,
     }
 
 	zones, err := provider.ListZones(context.Background())
@@ -53,18 +52,24 @@ func main() {
 }
 ```
 
-## Testing
+## Debugging
 
-This library comes with a test suite that verifies the interface by creating a few test records, validating them, and then removing those records. To run the tests, you can use:
+This library provides the ability to debug the request/response communication with the API server.
 
-```shell
-API_KEY=<MIJN_HOST_KEY> go test
-```
+To enable debugging, simply set the `debugging` property to `true`:
+```go
+	var provider = &mijnhost.Provider{
+		ApiKey: "***************************",
+		Debug: true,
+    }
 
-Or run more verbose test to dump all api requests and responses: 
+	zones, err := provider.ListZones(context.Background())
 
-```shell
-API_KEY=<MIJN_HOST_KEY> DEBUG=1 go test -v 
+	if err != nil {
+		panic(err)
+	}
+
+	records, err := provider.GetRecords(context.Background(), "example.nl")
 ```
 
 ```shell
@@ -72,7 +77,7 @@ API_KEY=<MIJN_HOST_KEY> DEBUG=1 go test -v
 [c] GET /api/v2/domains/example.nl/dns HTTP/1.1
 [c] Host: mijn.host
 [c] Accept: application/json
-[c] Api-Key: *********************
+[c] Api-Key: ***************************
 [c] Content-Type: application/json
 [c] User-Agent: libdns-client/1.0
 [c] 
@@ -93,3 +98,30 @@ API_KEY=<MIJN_HOST_KEY> DEBUG=1 go test -v
 [s] 
 [s] {"status":200,"status_description":"Request successful","data":{"domain":"example.nl","records":.....
 ```
+
+This will by default write to stdout but can set to any `io.Writer` by also setting the `DebugOut` property. 
+
+```go
+    var provider = &mijnhost.Provider{
+        ApiKey: "***************************",
+        Debug: true,
+        DebugOut: log.Writer(),
+    }
+```
+
+
+
+## Testing
+
+This library comes with a test suite that verifies the interface by creating a few test records, validating them, and then removing those records. To run the tests, you can use:
+
+```shell
+API_KEY=<MIJN_HOST_KEY> go test
+```
+
+Or run more verbose test to dump all api requests and responses: 
+
+```shell
+API_KEY=<MIJN_HOST_KEY> DEBUG=1 go test -v 
+```
+
