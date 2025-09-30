@@ -1,15 +1,19 @@
 package mijnhost
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	"net/netip"
 	"os"
 	"strings"
 	"testing"
+	"text/tabwriter"
 
 	"github.com/libdns/libdns"
+	"github.com/pbergman/provider"
 )
 
 func TestProvider_Unmarshall(t *testing.T) {
@@ -32,155 +36,387 @@ func TestProvider_Unmarshall(t *testing.T) {
 		t.Fatalf("base uri = %s; want %s", provider.GetBaseUri().String(), "http://127.0.0.1:8080")
 	}
 
+	if provider.GetDebug() != nil {
+		t.Fatalf("expected debug to be nil got %+v", provider.GetDebug())
+	}
+
+	_ = provider.getClient()
+
 	if provider.GetDebug() != os.Stdout {
-		t.Fatal("expected debug to be os.Stdout")
+		t.Fatalf("expected debug to be os.Stdout got %+v", provider.GetDebug())
 	}
 }
 
-func TestProvider(t *testing.T) {
+type DNSProvider interface {
+	libdns.RecordAppender
+	libdns.RecordDeleter
+	libdns.RecordGetter
+	libdns.RecordSetter
+}
 
-	provider := &Provider{ApiKey: os.Getenv("API_KEY")}
+func newProvider() DNSProvider {
+
+	p := &Provider{
+		ApiKey: os.Getenv("API_KEY"),
+	}
 
 	if _, ok := os.LookupEnv("DEBUG"); ok {
-		provider.Debug = true
+		p.Debug = true
 	}
 
-	zones, err := provider.ListZones(context.Background())
+	return p
+}
 
-	if err != nil {
-		t.Fatalf("ListZones failed: %v", err)
+func printRecords(t *testing.T, records []libdns.Record, invalid libdns.Record) {
+
+	var buf = new(bytes.Buffer)
+	var writer = tabwriter.NewWriter(buf, 0, 4, 2, ' ', tabwriter.Debug)
+	var isWritten = false
+
+	for _, record := range records {
+		var rr = record.RR()
+
+		if invalid == nil {
+			_, _ = fmt.Fprintf(writer, " %s\t %s\t %s\t %s\n", rr.Name, rr.TTL, rr.Type, rr.Data)
+		} else {
+			var prefix = "  "
+			if record.RR().Type == invalid.RR().Type && record.RR().Data == invalid.RR().Data && record.RR().Name == invalid.RR().Name {
+				prefix = "- "
+				isWritten = true
+			}
+			_, _ = fmt.Fprintf(writer, "%s%s\t %s\t %s\t %s\n", prefix, rr.Name, rr.TTL, rr.Type, rr.Data)
+		}
 	}
 
-	for _, zone := range zones {
+	if false == isWritten && nil != invalid {
+		_, _ = fmt.Fprintf(writer, "%s%s\t %s\t %s\t %s\n", "+ ", invalid.RR().Name, invalid.RR().TTL, invalid.RR().Type, invalid.RR().Data)
+	}
 
-		t.Logf("zone: %s", zone.Name)
+	_ = writer.Flush()
 
-		var name = fmt.Sprintf("__test_%s", randomString(8))
-		var records = []libdns.Record{
-			libdns.TXT{
-				Name: name,
-				Text: randomString(32),
-			},
-			libdns.TXT{
-				Name: name,
-				Text: randomString(32),
-			},
+	scanner := bufio.NewScanner(buf)
+
+	for scanner.Scan() {
+		t.Log(scanner.Text())
+	}
+}
+
+func getZones(p DNSProvider, t *testing.T) []string {
+
+	if v, ok := os.LookupEnv("ZONE"); ok {
+		return strings.Split(v, ",")
+	}
+
+	if o, ok := p.(libdns.ZoneLister); ok {
+		zones, err := o.ListZones(context.Background())
+
+		if err != nil {
+			t.Fatalf("ListZones failed: %v", err)
 		}
 
-		var original = validateRemote(records, -1, zone.Name, provider, t)
+		var ret = make([]string, len(zones))
 
-		t.Logf("found %d records", len(original))
-		output(original, "data:", t)
+		for idx, zone := range zones {
+			ret[idx] = zone.Name
+		}
 
-		setRecords(records, zone.Name, provider, t)
-		validateRemote(records, 0, zone.Name, provider, t)
-		removeRecords(records, name, zone.Name, provider, t)
-		validateRemote(records, 1, zone.Name, provider, t)
-		validateRemote(original, 2, zone.Name, provider, t)
+		return ret
+	}
+
+	return []string{"example.com"}
+}
+
+func TestProvider_ListZones(t *testing.T) {
+	var p = newProvider()
+
+	if x, ok := p.(libdns.ZoneLister); ok {
+		zones, err := x.ListZones(context.Background())
+
+		if err != nil {
+			t.Fatalf("ListZones failed: %v", err)
+		}
+
+		t.Log("Available zones:")
+
+		for _, zone := range zones {
+			t.Logf("%#+v", zone)
+		}
+	} else {
+		t.Skipf("ListZones not implemented.")
 	}
 }
 
-func output(list []libdns.Record, prefix string, t *testing.T) {
-	if out, e := json.MarshalIndent(list, "  ", " "); e == nil {
-		t.Logf("%s\n%s", prefix, string(out))
+func TestProvider_GetRecords(t *testing.T) {
+	var p = newProvider()
+
+	for _, zone := range getZones(p, t) {
+		records, err := p.GetRecords(context.Background(), zone)
+
+		if err != nil {
+			t.Fatalf("GetRecords failed: %v", err)
+		}
+
+		printRecords(t, records, nil)
+	}
+
+}
+
+func TestProvider_AppendRecords(t *testing.T) {
+
+	var records = []libdns.Record{
+		libdns.TXT{
+			Name: "_libdns_test_append_records_",
+			Text: "a",
+		},
+		libdns.TXT{
+			Name: "_libdns_test_append_records_",
+			Text: "b",
+		},
+	}
+
+	var p = newProvider()
+
+	for _, zone := range getZones(p, t) {
+
+		out, err := p.AppendRecords(context.Background(), zone, records)
+
+		if err != nil {
+			t.Fatalf("AppendRecords failed: %v", err)
+		}
+
+		t.Logf("Appended successfully %d rocords to zone %s", len(records), zone)
+
+		for _, record := range provider.RecordIterator(&records) {
+			if false == provider.IsInList(&record, &out) {
+				t.Fatalf("AppendRecords returned unexpected record, expecting %+v, to be in list %+v", record, out)
+			}
+		}
+
+		printRecords(t, records, nil)
+
+		if _, err := p.AppendRecords(context.Background(), zone, records); err == nil {
+			t.Fatalf("AppendRecords should have failed but didn't")
+		}
+
+		_, _ = p.DeleteRecords(context.Background(), zone, records)
 	}
 }
 
-func setRecords(list []libdns.Record, zone string, provider *Provider, t *testing.T) {
-	output(list, "adding records:", t)
+func TestProvider_SetRecords(t *testing.T) {
 
-	set, err := provider.SetRecords(context.Background(), zone, list)
+	var p = newProvider()
+	var name = "_libdns_test_set_records_"
+
+	for _, zone := range getZones(p, t) {
+		t.Run("SetRecords Example 1", func(t *testing.T) {
+			setRecordsExample1(t, p, zone, name)
+		})
+		t.Run("SetRecords Example 2", func(t *testing.T) {
+			setRecordsExample2(t, p, zone, name)
+		})
+	}
+}
+
+func setRecordsExample1(t *testing.T, p DNSProvider, zone, name string) {
+
+	var original = []libdns.Record{
+		libdns.Address{Name: name, IP: netip.MustParseAddr("192.0.2.1")},
+		libdns.Address{Name: name, IP: netip.MustParseAddr("192.0.2.2")},
+		libdns.TXT{Name: name, Text: "hello world"},
+	}
+
+	var input = []libdns.Record{
+		libdns.Address{Name: name, IP: netip.MustParseAddr("192.0.2.3")},
+	}
+
+	out, err := p.AppendRecords(context.Background(), zone, original)
+
+	if err != nil {
+		t.Fatalf("AppendRecords failed: %v", err)
+	}
+
+	t.Logf("Set test records for zone \"%s\":", zone)
+
+	printRecords(t, out, nil)
+
+	// make sure we delete all records even on failure
+	defer p.DeleteRecords(context.Background(), zone, []libdns.Record{
+		libdns.Address{Name: name},
+		libdns.TXT{Name: name},
+	})
+
+	ret, err := p.SetRecords(context.Background(), zone, input)
 
 	if err != nil {
 		t.Fatalf("SetRecords failed: %v", err)
 	}
 
-	if len(list) != len(set) || false == validateRecords(set, list) {
-		t.Fatalf("SetRecords returned %#v records, expected %#v", set, list)
+	if len(ret) != 1 {
+		t.Fatalf("SetRecords should have returned 1 record")
 	}
 
-	t.Log("successfully set records")
-}
-
-func removeRecords(list []libdns.Record, name, zone string, provider *Provider, t *testing.T) {
-
-	t.Log("removing created records")
-
-	removed, err := provider.DeleteRecords(context.Background(), zone, []libdns.Record{libdns.TXT{Name: name}})
-
-	if err != nil {
-		t.Fatalf("DeleteRecords failed: %v", err)
-	}
-
-	if len(list) != len(removed) || false == validateRecords(removed, list) {
-		t.Fatalf("DeleteRecords returned %#v records, expected %#v", removed, list)
-	}
-
-	t.Logf("successfully removed %d records", len(removed))
-}
-
-func validateRemote(list []libdns.Record, mode int, zone string, provider *Provider, t *testing.T) []libdns.Record {
-	items, err := provider.GetRecords(context.Background(), zone)
+	curr, err := p.GetRecords(context.Background(), zone)
 
 	if err != nil {
 		t.Fatalf("GetRecords failed: %v", err)
 	}
 
-	switch mode {
-	case 0:
-		t.Log("validating records by querying all available records")
+	t.Log("Current records zone:")
+	printRecords(t, curr, nil)
 
-		if false == validateRecords(list, items) {
-			t.Fatalf("not all set records found in %+v looking for %+v", items, list)
+	var shouldNotExist = original[:2]
+
+	for invalid, record := range provider.RecordIterator(&shouldNotExist) {
+		if provider.IsInList(&record, &curr) {
+			printRecords(t, curr, *invalid)
+			t.Fatal("AppendRecords returned unexpected records")
+		}
+	}
+
+	var shouldExist = append(original[2:], input[0])
+
+	for invalid, record := range provider.RecordIterator(&shouldExist) {
+		if false == provider.IsInList(&record, &curr) {
+			printRecords(t, curr, *invalid)
+			t.Fatal("AppendRecords returned unexpected records")
+		}
+	}
+}
+
+func setRecordsExample2(t *testing.T, p DNSProvider, zone, name string) {
+
+	var original = []libdns.Record{
+		libdns.Address{Name: "alpha_" + name, IP: netip.MustParseAddr("2001:db8::1")},
+		libdns.Address{Name: "alpha_" + name, IP: netip.MustParseAddr("2001:db8::2")},
+		libdns.Address{Name: "beta_" + name, IP: netip.MustParseAddr("2001:db8::3")},
+		libdns.Address{Name: "beta_" + name, IP: netip.MustParseAddr("2001:db8::4")},
+	}
+
+	var input = []libdns.Record{
+		libdns.Address{Name: "alpha_" + name, IP: netip.MustParseAddr("2001:db8::1")},
+		libdns.Address{Name: "alpha_" + name, IP: netip.MustParseAddr("2001:db8::2")},
+		libdns.Address{Name: "alpha_" + name, IP: netip.MustParseAddr("2001:db8::5")},
+	}
+
+	out, err := p.AppendRecords(context.Background(), zone, original)
+
+	if err != nil {
+		t.Fatalf("AppendRecords failed: %v", err)
+	}
+
+	t.Logf("Set test records for zone \"%s\":", zone)
+
+	printRecords(t, out, nil)
+
+	// make sure we delete all records even on failure
+	defer p.DeleteRecords(context.Background(), zone, []libdns.Record{
+		libdns.RR{Name: "alpha_" + name, Type: "AAAA"},
+		libdns.RR{Name: "beta_" + name, Type: "AAAA"},
+	})
+
+	ret, err := p.SetRecords(context.Background(), zone, input)
+
+	if err != nil {
+		t.Fatalf("SetRecords failed: %v", err)
+	}
+
+	if len(ret) != 1 {
+		t.Fatalf("SetRecords should have returned 1 record")
+	}
+
+	curr, err := p.GetRecords(context.Background(), zone)
+
+	if err != nil {
+		t.Fatalf("GetRecords failed: %v", err)
+	}
+
+	t.Log("Current records zone:")
+	printRecords(t, curr, nil)
+
+	var shouldExist = append(original, input[2])
+
+	for invalid, record := range provider.RecordIterator(&shouldExist) {
+		if false == provider.IsInList(&record, &curr) {
+			printRecords(t, curr, *invalid)
+			t.Fatal("AppendRecords returned unexpected records")
+		}
+	}
+}
+
+func TestProvider_DeleteRecords(t *testing.T) {
+
+	var p = newProvider()
+	var name = "_libdns_test_rm_records_"
+
+	for _, zone := range getZones(p, t) {
+		var records = []libdns.Record{
+			libdns.Address{Name: name, IP: netip.MustParseAddr("2001:db8::1")},
+			libdns.Address{Name: name, IP: netip.MustParseAddr("2001:db8::2")},
+			libdns.Address{Name: name, IP: netip.MustParseAddr("2001:db8::3")},
+			libdns.Address{Name: name, IP: netip.MustParseAddr("2001:db8::4")},
+			libdns.Address{Name: name, IP: netip.MustParseAddr("2001:db8::5")},
+			libdns.Address{Name: name, IP: netip.MustParseAddr("127.0.0.1")},
+			libdns.Address{Name: name, IP: netip.MustParseAddr("127.0.0.2")},
+			libdns.Address{Name: name, IP: netip.MustParseAddr("127.0.0.3")},
+			libdns.Address{Name: name, IP: netip.MustParseAddr("127.0.0.4")},
+			libdns.Address{Name: name, IP: netip.MustParseAddr("127.0.0.5")},
+			libdns.Address{Name: name, IP: netip.MustParseAddr("127.0.0.6")},
 		}
 
-		t.Log("successfully found new records in remote set")
-	case 1:
-		t.Log("validating removed records by querying and validating against available records")
+		out, err := p.SetRecords(context.Background(), zone, records)
 
-		for item := range RecordIterator(list).Iterate() {
-			if validateRecords([]libdns.Record{item}, items) {
-				t.Fatalf("not expected to find record %#v", item)
+		if err != nil {
+			t.Fatalf("SetRecords failed: %v", err)
+		}
+
+		t.Logf("Set following test records for zone \"%s\":", zone)
+
+		printRecords(t, out, nil)
+
+		var toRemove = records[:2]
+
+		removed, err := p.DeleteRecords(context.Background(), zone, toRemove)
+
+		if err != nil {
+			t.Fatalf("DeleteRecords failed: %v", err)
+		}
+
+		for _, x := range provider.RecordIterator(&removed) {
+			if false == provider.IsInList(&x, &toRemove) {
+				printRecords(t, toRemove, x)
+				t.Fatal("DeleteRecords returned unexpected records")
 			}
 		}
 
-		t.Log("successfully removed records")
-	case 2:
-		t.Log("validating original records by querying against current available records")
+		t.Log("Deleted records:")
+		printRecords(t, removed, nil)
 
-		if len(list) != len(items) || false == validateRecords(list, items) {
-			t.Fatalf("records not same a starting:\n%+v\n%+v", items, list)
+		curr, err := p.GetRecords(context.Background(), zone)
+
+		if err != nil {
+			t.Fatalf("GetRecords failed: %v", err)
 		}
 
-		t.Log("successfully matched original list against current available records")
-
-	}
-
-	return items
-
-}
-
-func validateRecords(x []libdns.Record, set []libdns.Record) bool {
-	for a := range RecordIterator(x).Iterate() {
-		for b := range RecordIterator(set).Iterate() {
-			if strings.EqualFold(a.Name, b.Name) && a.Data == b.Data && a.Type == b.Type {
-				return true
+		for _, x := range provider.RecordIterator(&toRemove) {
+			if provider.IsInList(&x, &curr) {
+				printRecords(t, curr, x)
+				t.Fatal("DeleteRecords returned unexpected records")
 			}
 		}
-		return false
+
+		removed, err = p.DeleteRecords(context.Background(), zone, []libdns.Record{
+			libdns.RR{Name: name, Type: "AAAA"},
+			libdns.RR{Name: name, Type: "A"},
+		})
+
+		if err != nil {
+			t.Fatalf("DeleteRecords failed: %v", err)
+		}
+		t.Log("Deleted records:")
+		printRecords(t, removed, nil)
+
+		if len(removed) != 9 {
+			t.Fatalf("DeleteRecords returned invalid count of records: expecting 9 got %d", len(removed))
+		}
 	}
-	return false
-}
-
-func randomString(n int) string {
-	var x = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	var s = len(x)
-
-	b := make([]byte, n)
-
-	for i := range b {
-		b[i] = x[rand.Intn(s)]
-	}
-
-	return string(b)
 }

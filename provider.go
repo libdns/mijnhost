@@ -1,6 +1,7 @@
 package mijnhost
 
 import (
+	"context"
 	"io"
 	"net/url"
 	"os"
@@ -8,7 +9,13 @@ import (
 
 	"github.com/libdns/libdns"
 	"github.com/libdns/mijnhost/client"
+	"github.com/pbergman/provider"
 )
+
+type Client interface {
+	provider.Client
+	provider.ZoneAwareClient
+}
 
 type Provider struct {
 	// ApiKey used for authenticating the mijn.host api see:
@@ -21,11 +28,11 @@ type Provider struct {
 	// BaseUri used for the api calls and will default to https://mijn.host/api/v2/
 	BaseUri *ApiBaseUri `json:"base_uri"`
 
-	client *client.ApiClient
+	client Client
 	mutex  sync.RWMutex
 }
 
-func (p *Provider) getClient() *client.ApiClient {
+func (p *Provider) getClient() Client {
 	if nil == p.client {
 
 		if nil == p.BaseUri {
@@ -62,22 +69,32 @@ func (p *Provider) GetBaseUri() *url.URL {
 	return (*url.URL)(p.BaseUri)
 }
 
-func fqdn(name string) string {
+func (p *Provider) GetRecords(ctx context.Context, zone string) ([]libdns.Record, error) {
+	return provider.GetRecords(ctx, &p.mutex, p.getClient(), zone)
+}
 
-	if name[len(name)-1] != '.' {
-		return name + "."
-	}
+func (p *Provider) AppendRecords(ctx context.Context, zone string, recs []libdns.Record) ([]libdns.Record, error) {
+	return provider.AppendRecords(ctx, &p.mutex, p.getClient(), zone, recs)
+}
 
-	return name
+func (p *Provider) SetRecords(ctx context.Context, zone string, recs []libdns.Record) ([]libdns.Record, error) {
+	return provider.SetRecords(ctx, &p.mutex, p.getClient(), zone, recs)
+}
+
+func (p *Provider) DeleteRecords(ctx context.Context, zone string, recs []libdns.Record) ([]libdns.Record, error) {
+	return provider.DeleteRecords(ctx, &p.mutex, p.getClient(), zone, recs)
+}
+
+func (p *Provider) ListZones(ctx context.Context) ([]libdns.Zone, error) {
+	return provider.ListZones(ctx, &p.mutex, p.getClient())
 }
 
 // Interface guards
 var (
 	_ client.ApiClientConfig = (*Provider)(nil)
-
-	_ libdns.RecordGetter   = (*Provider)(nil)
-	_ libdns.RecordAppender = (*Provider)(nil)
-	_ libdns.RecordSetter   = (*Provider)(nil)
-	_ libdns.RecordDeleter  = (*Provider)(nil)
-	_ libdns.ZoneLister     = (*Provider)(nil)
+	_ libdns.RecordGetter    = (*Provider)(nil)
+	_ libdns.RecordAppender  = (*Provider)(nil)
+	_ libdns.RecordSetter    = (*Provider)(nil)
+	_ libdns.RecordDeleter   = (*Provider)(nil)
+	_ libdns.ZoneLister      = (*Provider)(nil)
 )

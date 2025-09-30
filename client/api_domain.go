@@ -2,6 +2,9 @@ package client
 
 import (
 	"context"
+	"net/http"
+
+	"github.com/pbergman/provider"
 )
 
 type domainsData struct {
@@ -17,16 +20,26 @@ type Domain struct {
 	Tags        []string `json:"tags"`
 }
 
-func (a *ApiClient) GetDomains(ctx context.Context) ([]*Domain, error) {
+func (d *Domain) String() string {
+	return d.Domain
+}
+
+func (a *ApiClient) Domains(ctx context.Context) ([]provider.Domain, error) {
 
 	var object struct {
 		status
 		Data *domainsData `json:"data"`
 	}
 
-	if err := a.fetch(ctx, "domains", "GET", nil, &object); err != nil {
+	if err := a.fetch(ctx, "domains", http.MethodGet, nil, &object); err != nil {
 		return nil, err
 	}
 
-	return object.Data.Domains, nil
+	var domains = make([]provider.Domain, len(object.Data.Domains))
+
+	for i, domain := 0, len(object.Data.Domains); i < domain; i++ {
+		domains[i] = object.Data.Domains[i]
+	}
+
+	return domains, nil
 }
