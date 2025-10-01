@@ -4,7 +4,7 @@ This package implements the libdns interfaces for the [Mijn Host API](https://mi
 
 ## Authenticating
 
-To authenticate, you need to create am api key [here](https://mijn.host/cp/account/api/).
+To authenticate, you need to create an api key [here](https://mijn.host/cp/account/api/).
 
 ## Example
 
@@ -18,16 +18,17 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
-
+	
+	"github.com/pbergman/provider"
 	"github.com/libdns/mijnhost"
 )
 
 func main() { 
-	var provider = &mijnhost.Provider{
+	var p = &mijnhost.Provider{
 		ApiKey: "***************************",
     }
 
-	zones, err := provider.ListZones(context.Background())
+	zones, err := p.ListZones(context.Background())
 
 	if err != nil {
 		panic(err)
@@ -36,13 +37,13 @@ func main() {
 	var writer = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
 
 	for _, zone := range zones {
-		records, err := provider.GetRecords(context.Background(), zone.Name)
+		records, err := p.GetRecords(context.Background(), zone.Name)
 
 		if err != nil {
 			panic(err)
 		}
 
-		for record := range mijnhost.RecordIterator(records).Iterate() {
+		for _, record := range provider.RecordIterator(&records) {
 			_, _ = fmt.Fprintf(writer, "%s\t%v\t%s\t%s\n", record.Name, record.TTL.Seconds(), record.Type, record.Data)
 		}
 
