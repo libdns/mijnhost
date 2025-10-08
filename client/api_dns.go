@@ -48,37 +48,37 @@ func MarshallDNSRecords(data *libdns.RR, zone string) *DNSRecord {
 	return record
 }
 
-func (a *ApiClient) SetDNSList(ctx context.Context, zone string, records []*libdns.RR) error {
+func (a *ApiClient) SetDNSList(ctx context.Context, zone string, changes provider.ChangeList) ([]libdns.Record, error) {
 
 	type setPayload struct {
 		Records []*DNSRecord `json:"records"`
 	}
 
 	var payload = &setPayload{
-		Records: make([]*DNSRecord, len(records)),
+		Records: make([]*DNSRecord, 0, len(changes)),
 	}
 
-	for i, c := 0, len(records); i < c; i++ {
-		payload.Records[i] = MarshallDNSRecords(records[i], zone)
+	for record := range changes.Iterate(provider.NoChange | provider.Create) {
+		payload.Records = append(payload.Records, MarshallDNSRecords(record, zone))
 	}
 
 	var buf = new(bytes.Buffer)
 
 	if err := json.NewEncoder(buf).Encode(payload); err != nil {
-		return err
+		return nil, err
 	}
 
 	var object status
 
 	if err := a.fetch(ctx, a.toDnsPath(zone), http.MethodPut, buf, &object); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := object.Error(); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return nil, nil
 }
 func (a *ApiClient) GetDNSList(ctx context.Context, zone string) ([]libdns.Record, error) {
 

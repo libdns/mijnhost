@@ -49,5 +49,5 @@ func TestProvider(t *testing.T) {
 		provider.Debug = true
 	}
 
-	test.RunProviderTests(t, provider)
+	test.RunProviderTests(t, provider, test.TestAll)
 }

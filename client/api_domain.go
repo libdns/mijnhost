@@ -20,7 +20,7 @@ type Domain struct {
 	Tags        []string `json:"tags"`
 }
 
-func (d *Domain) String() string {
+func (d *Domain) Name() string {
 	return d.Domain
 }
 
