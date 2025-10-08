@@ -1,65 +1,53 @@
-package mijnhost_test
+package mijnhost
 
 import (
-	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
-	"github.com/libdns/mijnhost"
-
-	"github.com/joho/godotenv"
-	"github.com/libdns/libdns"
-	"github.com/stretchr/testify/assert"
+	"github.com/pbergman/provider/test"
 )
 
-var provider mijnhost.Provider
-var zone string
-var ctx context.Context
+func TestProvider_Unmarshall(t *testing.T) {
+	var provider *Provider
+	var buf = `{
+"api_key": "testkey",
+"base_uri": "http://127.0.0.1:8080",
+"debug": true
+}`
 
-var sourceRecords []libdns.Record
-
-func setup() {
-	err := godotenv.Load(".env")
-	if err != nil {
-		panic("Error loading .env file")
+	if err := json.Unmarshal([]byte(buf), &provider); err != nil {
+		t.Fatal(err)
 	}
 
-	provider = mijnhost.Provider{
-		ApiKey: os.Getenv("MIJNHOST_API_KEY"),
+	if provider.GetApiKey() != "testkey" {
+		t.Fatalf("api key = %s; want %s", provider.GetApiKey(), "testkey")
 	}
-	zone = os.Getenv("MIJNHOST_ZONE")
-	ctx = context.Background()
-	sourceRecords = []libdns.Record{
-		{
-			Type:  "A",
-			Name:  "test",
-			Value: "1.2.3.1",
-			TTL:   3600,
-		},
+
+	if provider.GetBaseUri().String() != "http://127.0.0.1:8080" {
+		t.Fatalf("base uri = %s; want %s", provider.GetBaseUri().String(), "http://127.0.0.1:8080")
+	}
+
+	if provider.GetDebug() != nil {
+		t.Fatalf("expected debug to be nil got %+v", provider.GetDebug())
+	}
+
+	_ = provider.getClient()
+
+	if provider.GetDebug() != os.Stdout {
+		t.Fatalf("expected debug to be os.Stdout got %+v", provider.GetDebug())
 	}
 }
 
-func TestProvider_GetRecords(t *testing.T) {
-	setup()
+func TestProvider(t *testing.T) {
 
-	// provider.DeleteRecords(ctx, zone, sourceRecords)
-
-	records, err := provider.GetRecords(ctx, zone)
-	assert.NoError(t, err)
-	assert.NotNil(t, records)
-	assert.True(t, len(records) > 0, "No records found")
-	t.Logf("GetRecords test passed. Records found: %d", len(records))
-}
-
-func TestProvider_AppendRecords(t *testing.T) {
-	setup()
-
-	newRecords := []libdns.Record{
-		sourceRecords[0],
+	var provider = &Provider{
+		ApiKey: os.Getenv("API_KEY"),
 	}
 
-	records, err := provider.AppendRecords(ctx, zone, newRecords)
-	assert.NoError(t, err)
-	assert.NotNil(t, records)
-	assert.Equal(t, 1, len(records))
+	if _, ok := os.LookupEnv("DEBUG"); ok {
+		provider.Debug = true
+	}
+
+	test.RunProviderTests(t, provider, test.TestAll)
 }
