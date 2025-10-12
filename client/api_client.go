@@ -8,15 +8,27 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/pbergman/provider"
 )
 
 func NewApiClient(x ApiClientConfig) *ApiClient {
+
+	var transporter http.RoundTripper = &apiTransport{
+		RoundTripper:    http.DefaultTransport,
+		ApiClientConfig: x,
+	}
+
+	if v, ok := x.(provider.DebugConfig); ok {
+		transporter = &provider.DebugTransport{
+			RoundTripper: transporter,
+			Config:       v,
+		}
+	}
+
 	return &ApiClient{
 		client: &http.Client{
-			Transport: &apiTransport{
-				RoundTripper:    http.DefaultTransport,
-				ApiClientConfig: x,
-			},
+			Transport: transporter,
 		},
 	}
 }

@@ -3,7 +3,6 @@ package mijnhost
 import (
 	"context"
 	"io"
-	"net/url"
 	"os"
 	"sync"
 
@@ -21,12 +20,14 @@ type Provider struct {
 	// ApiKey used for authenticating the mijn.host api see:
 	// https://mijn.host/api/doc/doc-343216#obtaining-your-api-key
 	ApiKey string `json:"api_key"`
-	// Debug when true it will dump the http.Client request/response to os.Stdout
-	// or you can change that by setting `DebugOut`
-	Debug    bool      `json:"debug"`
-	DebugOut io.Writer `json:"-"`
 	// BaseUri used for the api calls and will default to https://mijn.host/api/v2/
 	BaseUri *ApiBaseUri `json:"base_uri"`
+
+	// DebugLevel sets the verbosity for logging API requests and responses.
+	DebugLevel provider.OutputLevel `json:"debug_level"`
+	// DebugOut defines the output destination for debug logs.
+	// Defaults to standard output (STDOUT).
+	DebugOut io.Writer `json:"-"`
 
 	client Client
 	mutex  sync.RWMutex
@@ -47,26 +48,6 @@ func (p *Provider) getClient() Client {
 	}
 
 	return p.client
-}
-
-func (p *Provider) GetApiKey() string {
-	return p.ApiKey
-}
-
-func (p *Provider) GetDebug() io.Writer {
-	if p.Debug && p.DebugOut != nil {
-		return p.DebugOut
-	}
-	return nil
-}
-
-func (p *Provider) GetBaseUri() *url.URL {
-
-	if nil == p.BaseUri {
-		return nil
-	}
-
-	return (*url.URL)(p.BaseUri)
 }
 
 func (p *Provider) GetRecords(ctx context.Context, zone string) ([]libdns.Record, error) {
