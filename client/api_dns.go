@@ -50,12 +50,16 @@ func MarshallDNSRecords(data *libdns.RR, zone string) *DNSRecord {
 
 func (a *ApiClient) SetDNSList(ctx context.Context, zone string, changes provider.ChangeList) ([]libdns.Record, error) {
 
+	if false == changes.Has(provider.Delete|provider.Create) {
+		return nil, nil
+	}
+
 	type setPayload struct {
 		Records []*DNSRecord `json:"records"`
 	}
 
 	var payload = &setPayload{
-		Records: make([]*DNSRecord, 0, len(changes)),
+		Records: make([]*DNSRecord, 0),
 	}
 
 	for record := range changes.Iterate(provider.NoChange | provider.Create) {
