@@ -61,7 +61,7 @@ To enable debugging, simply set the `debugging` property to `true`:
 ```go
 	var provider = &mijnhost.Provider{
 		ApiKey: "***************************",
-		Debug: true,
+		DebugLevel: provider.OutputDebug,
     }
 
 	zones, err := provider.ListZones(context.Background())
@@ -105,7 +105,7 @@ This will by default write to stdout but can set to any `io.Writer` by also sett
 ```go
     var provider = &mijnhost.Provider{
         ApiKey: "***************************",
-        Debug: true,
+        DebugLevel: provider.OutputDebug,
         DebugOut: log.Writer(),
     }
 ```
