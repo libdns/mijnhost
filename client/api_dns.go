@@ -38,11 +38,10 @@ func MarshallDNSRecords(data *libdns.RR, zone string) *DNSRecord {
 		record.Name += "."
 	}
 
-	switch data.TTL.Seconds() {
-	case 300, 900, 3600, 10800, 21600, 43200, 86400:
-		record.TTL = int(data.TTL.Seconds())
-	default:
-		record.TTL = 900
+	if x := data.TTL.Seconds(); x > 0 && x <= 86400 {
+		record.TTL = int(x)
+	} else {
+		record.TTL = 3600
 	}
 
 	return record
