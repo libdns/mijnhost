@@ -4,7 +4,7 @@
 curl --location --request PATCH 'https://mijn.host/api/v2/domains/bergman.sh/dns' \
 --header 'Accept;' \
 --header 'User-Agent: my-application/1.0.0' \
---header 'API-Key: 145ef2cfe8e6d06a66ebc6e5ecc0b2aa' \
+--header 'API-Key: YOUR_API_KEY_HERE' \
 --header 'Content-Type: application/json' \
 --data-raw '{
     "record": {
